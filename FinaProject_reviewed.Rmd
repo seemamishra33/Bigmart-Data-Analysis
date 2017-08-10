@@ -1,0 +1,994 @@
+---
+title: "Explore a Bigmart Dataset"
+author: "Seema Mishra"
+output:
+  html_document: default
+  pdf_document: default
+---
+> **Problem definition**: Given a 2013 sales data for 1559 products across 10 stores in different cities. \
+The aim of this data exploration is to identify the most important attributes that play a statictically significant impact on the sales of each product at a particular store. 
+
+========================================================
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+# Load all of the packages that you end up using in your analysis in this code
+# chunk.
+
+# Notice that the parameter "echo" was set to FALSE for this code chunk. This
+# prevents the code from displaying in the knitted HTML output. You should set
+# echo=FALSE for all code chunks in your file, unless it makes sense for your
+# report to show the code that generated a particular plot.
+
+# The other parameters for "message" and "warning" should also be set to FALSE
+# for other code chunks once you have verified that each plot comes out as you
+# want it to. This will clean up the flow of your report.
+# set the working directory
+setwd("/Users/seemamishra/Desktop/Exploratory Data Analysis/Final_Project")
+
+library(ggplot2)
+library(GGally)
+library(scales)
+library(memisc)
+# TThe mice package in R, helps you imputing missing values with plausible data values
+library(mice)
+# visual representation of missing data pattern can be obtained using the VIM package 
+library(VIM)
+library(gridExtra)
+library(grid)
+library(car)
+library(caret)
+library(psych)
+
+```
+> **Explore the data a bit**
+```{r echo=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+# Load the Data
+bigmarts_train <- read.csv('Bigmarts_Train.csv')
+# Explore the date a bit
+names(bigmarts_train)
+```
+> **Dimension of data**
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+dim(bigmarts_train)
+```
+
+There are 8523 obervation for each store and 12 number of attributes for each store.
+
+> **Structure of data**
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+str(bigmarts_train)
+```
+> **Find any entries which are blanck and fill NA to those entries.**\ 
+It is observed that item_weight has missing vaues.\
+It is observed that Outlet size and  and Item_Visibilities has entries which are empty or zero.
+Item Visibility zero means there is no prodcut in the outlet which does not make any sennse and require data imputation.
+   
+```{r echo=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+bigmarts_train$Outlet_Size[bigmarts_train$Outlet_Size==""]<- NA
+bigmarts_train$Item_Visibility[bigmarts_train$Item_Visibility==0]<- NA
+```
+
+> **Looking at missing data pattern visually**
+The following figure is useful for investigating any structure of missing observation in the data.\
+Also, the missing pattern could suggest which variables could potentially be useful for imputation of missing entries.\
+
+```{r}
+md.pattern(bigmarts_train) 
+```
+
+
+```{r echo=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+
+# To check the missing data pattern
+aggr_plot <- aggr(bigmarts_train, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE, labels=names(data), 
+                  cex.axis=.7, gap=3, ylab=c("Proportion of missing data"," Missingness Pattern"))
+
+#ggsave("aggr_plot.png")
+#Check to see if there is NA
+sum(is.na(bigmarts_train$Item_Visibility))
+```
+
+On the left side of historgram the variables are sorted by the number of missing vlaues.\
+The variables Outlet_size, Item_Weight, Item_Visibility are missing mostly.\
+On the rigt side of the graph the blue represent the observed data and the red represent the missing data.\
+
+**Cleaning the data**: Using imputation statistical techniques\
+**Imputation**:imputation is the process of replacing missing data with substituted values.pmm(Predictive mean matching)\
+There are some values for item vsibility are zero which is not correct. Item weight and Outlet size ahve missing values,\
+so needed to fix with imputation.
+
+```{r, message=FALSE, warning=FALSE, include=FALSE}
+# method 1: Takes lot of time when pass all data matrix
+# bigmarts_train <- mice(bigmarts_train,m=5,maxit=50,meth='pmm',seed=500)
+# Method 2: Quickpred()
+bigmarts_train_imp <-mice(bigmarts_train, pred=quickpred(bigmarts_train, minpuc=0.25, include='Item_Weight','Item_Visibility', 'Outlet_Size'))
+bigmarts_train_imp <- complete(bigmarts_train_imp)
+
+```
+
+> **Display first 5 records**
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+head(bigmarts_train, n=5)
+```
+
+The data set is divided into two type of variables:  
+  **Categorical variables**: Item_Identifier, Item_Fat_Content, Item_Type, Outlet_Identifier,Outlet_Size,Outlet_Location_Type,Outlet_Type  
+  **Numerical variables**: Item_Weight, Item_Visibility, Item_MRP , Outlet_Establishment_Year, Item_Outlet_Sales 
+
+> **Lets look at the summary of data**
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+summary(bigmarts_train)
+```
+
+# Univariate Plots
+Examining the output of the summary function, we see that results are different for continous and categoricaly variables.\
+It is observed that type fat content in data is two type low fat and regular which is divided into\
+five caregories in dataset, Low Fat, low fat, LF, reg, Regular. Lets fix this problem.
+
+```{r echo=FALSE, echo=TRUE, message=FALSE, warning=FALSE}
+# Changing reg to Regular and LF and low fat to Low Fat
+bigmarts_train_imp$Item_Fat_Content<-replace(bigmarts_train_imp$Item_Fat_Content,bigmarts_train_imp$Item_Fat_Content=="reg","Regular")
+bigmarts_train_imp$Item_Fat_Content<-replace(bigmarts_train_imp$Item_Fat_Content,bigmarts_train_imp$Item_Fat_Content=="LF","Low Fat")
+bigmarts_train_imp$Item_Fat_Content<-replace(bigmarts_train_imp$Item_Fat_Content,bigmarts_train_imp$Item_Fat_Content=="low fat","Low Fat")
+```
+
+```{r echo=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(bigmarts_train_imp, aes(x=Item_MRP)) + 
+  geom_density(color = "blue", adjust= 1/7) + # A multiplicate bandwidth adjustment
+  geom_vline(xintercept = 70, color="red")+
+  geom_vline(xintercept = 136, color="red")+
+  geom_vline(xintercept = 204, color="red") + 
+  ggtitle("Density plot of Item MRP")
+# I observed there four level of Item_MRP
+bigmarts_train_imp$MRP_Level <- as.factor(
+  ifelse(bigmarts_train_imp$Item_MRP < 70, "Low",
+         ifelse(bigmarts_train_imp$Item_MRP < 136, "Medium",
+                ifelse(bigmarts_train_imp$Item_MRP < 204, "High", "Very_High")))
+)
+```
+
+By looking at the density plot of Item_MRP it shows there are differenet level of MRP distribution. So divide into 4 level of categories like: Low, Medium, high , Very high
+
+```{r echo=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+#Histograms can be a poor method for determining the shape of a distribution because it is so strongly affected by the number of #bins used.Kernal density plots are usually a much more effective way to view the distribution of a variable.
+#cor(bigmarts_train_imp$Item_Visibility, bigmarts_train_imp$Item_Outlet_Sales, use = "complete.obs")
+
+plot1 <- ggplot(bigmarts_train_imp, aes(x=Item_Outlet_Sales)) + 
+  geom_density(color = "blue", adjust= 1/2)+
+  ggtitle("Density plot of Item Outlet sales over the years")
+#ggsave("item_outlet.png")
+# Some of the zero entries item visibility values are imputed, lets see the density plot difference if there is..
+plot2 <- ggplot() + 
+  geom_density(aes(x=Item_Visibility), color="red", adjust= 1/4, data=bigmarts_train_imp) + # Imputed data
+  geom_density(aes(x=Item_Visibility), color="blue",adjust= 1/4, data=bigmarts_train)+ # before imputation
+  ggtitle("Density plot of Item visibility before and after imputation ")+
+  scale_colour_manual(values=c("red","green","blue"))
+
+  
+# add legend via mouse click
+plot2 
+#ggsave("item_visibility.png")
+#the two graphs distributions before and after imputation are close to each other.
+#grid.arrange(plot1, plot2, nrow =2)
+
+```
+
+We can see that density plot of Item_Visibility are almost similar before and after imputation. \ 
+
+**Univariate Plots Section: Divided into two levels of analysis based on Product level and Outlet level**
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(bigmarts_train_imp, aes(Item_Outlet_Sales)) +
+  geom_histogram(bins = 100,color= 'brown') +
+  scale_x_continuous(limits = c(0, 10000), breaks = c(0, 500, 1000, 2500, 5000, 10000))+
+  ggtitle("Item_Outlet_Sales distribution")
+```
+
+The long tail distribution of sales shows the small number of items have higher sales which\
+is approximately 20% of items have 80% of sales.\
+Lets us move formward to see the distribution of Sales across the categorcals variables.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(bigmarts_train_imp, aes(Item_Type, Item_Outlet_Sales) ) +
+geom_bar(stat= 'Identity', color= 'deeppink4') +
+facet_wrap(~Outlet_Location_Type+Outlet_Size) +
+theme(axis.text.x = element_text(angle = 70, hjust = 1) ) +
+xlab('Item Type') +
+ylab('Outlet Sales') +
+ggtitle('Item Type vs Outlet Sales')
+```
+
+1. fruits and Vegitable and snacks have more  sales
+2. House hold & Frozen Foods is second
+3. Breakfast, Seafood, Hard Drinks, Starchy Foods are less sales
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(bigmarts_train_imp, aes(x = Item_Fat_Content, y = Item_Outlet_Sales ) ) +
+geom_bar(stat = 'Identity', color='brown' ) +
+facet_wrap(~Outlet_Location_Type+Outlet_Size) +
+xlab('Fat Content') +
+ylab('Outlet Sales') +
+ggtitle('Fat Content vs Outlet Sales')
+```
+
+it shows from the graph that low fat items are high in outlet sales.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(bigmarts_train_imp, aes(x = MRP_Level, y = Item_Outlet_Sales ) ) +
+geom_bar(stat = 'Identity', color= 'blue' ) +
+facet_wrap(~Outlet_Location_Type+Outlet_Size) +
+xlab('MRP Level') +
+ylab('Outlet Sales') +
+ggtitle('MRP level vs Outlet Sales')
+```
+
+items taged with Low MRP level are very lo sales.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(bigmarts_train_imp, aes(Item_Type, Item_Outlet_Sales) ) +
+geom_bar(stat='Identity', color='brown') +
+facet_wrap(~Outlet_Identifier) +
+theme(axis.text.x = element_text(angle = 70, hjust = 1) ) +
+xlab('Outlet_Identifier') +
+ylab('Outlet Sales') +
+ggtitle('Item Type vs Outlet Sales')
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(bigmarts_train_imp, aes(Outlet_Identifier , Item_Outlet_Sales) ) +
+geom_bar(stat='Identity', color='chocolate') +
+theme(axis.text.x = element_text(angle = 70, hjust = 1) ) +
+xlab('Outlet Identifier') +
+ylab('Outlet Sales') +
+ggtitle('Outlet Identifier vs Outlet Sales')
+```
+
+it shows Outlet10 and Outlet19 has very low sales relatively.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(bigmarts_train_imp, aes(Item_Fat_Content , Item_Outlet_Sales) ) +
+geom_bar(stat='Identity', color='darkslategray') +
+theme(axis.text.x = element_text(angle = 70, hjust = 1) ) +
+xlab('Fat content') +
+ylab('Outlet Sales') +
+ggtitle('Item fat content vs Outlet Sales')
+```
+
+Items containing low fat are high in sales as comapred to regular fat content items.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(bigmarts_train_imp, aes(Outlet_Size , Item_Outlet_Sales) ) +
+geom_bar(stat='Identity', color='darkcyan') +
+theme(axis.text.x = element_text(angle = 70, hjust = 1) ) +
+xlab('Outlet Size') +
+ylab('Outlet Sales') +
+ggtitle('Outlet Size vs Outlet Sales')
+```
+
+Its apparent that medium sized outlet has higher sales.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(bigmarts_train_imp, aes(Outlet_Location_Type , Item_Outlet_Sales) ) +
+geom_bar(stat='Identity', color='deepskyblue4') +
+theme(axis.text.x = element_text(angle = 70, hjust = 1) ) +
+xlab('Outlet Location Type') +
+ylab('Outlet Sales') +
+ggtitle('Outlet Location Type vs Outlet Sales')
+```
+
+Tier 3 has more sales.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(bigmarts_train_imp, aes(Outlet_Type , Item_Outlet_Sales) ) +
+geom_bar(stat='Identity', color='darkslateblue') +
+theme(axis.text.x = element_text(angle = 70, hjust = 1) ) +
+xlab('Outlet Type') +
+ylab('Outlet Sales') +
+ggtitle('Outlet Type vs Outlet Sales')
+```
+
+Supermarket Type1, Type3 have high value of sales and they reasonably in good numbers.\
+Type of grocery stores are higher in number but they have not much sales.
+
+
+  It is important to understand that how long the outlet is established in the reference of year 2013,\
+  since the data is for year 2013.
+  
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+bigmarts_train_imp$Total_Year_Establishment <- as.factor(2013-bigmarts_train_imp$Outlet_Establishment_Year)
+bigmarts_train_imp$I_O_SaleP <- bigmarts_train_imp$Item_Outlet_Sales * 100 / max(bigmarts_train_imp$Item_Outlet_Sales)
+```
+
+Arrange data so that Item Outlet sales becomes tha last column.  
+
+```{r echo=FALSE, echo=TRUE, message=FALSE, warning=FALSE}
+Bigmarts <- subset(bigmarts_train_imp, select = c(Item_Identifier,
+                                                  Item_Weight,
+                                                Item_Fat_Content,
+                                                Item_Visibility,
+                                                Item_Type,
+                                                 Item_MRP,
+                                                MRP_Level,
+                                               Outlet_Identifier,
+                                               Outlet_Size,
+                                              Outlet_Location_Type,
+                                              Outlet_Type,
+                                           Total_Year_Establishment,
+                                           Item_Outlet_Sales))
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Bigmarts, aes( Total_Year_Establishment , Item_Outlet_Sales) ) +
+geom_bar(stat='Identity', color= 'brown') +
+facet_wrap(~Outlet_Location_Type) +
+theme(axis.text.x = element_text(angle = 70, hjust = 1) ) +
+xlab('Outlet_Age') +
+ylab('Outlet Sales') +
+ggtitle('Outlet_Age vs Outlet Sales')
+```
+
+Location Tier3 has good sales for older established outlet. Tier 2 and 3 have good sales for middles aged location outlet.
+
+
+# Univariate Analysis
+
+### What is the structure of your dataset?
+
+| Variable        | Description                                                                     |
+|-----------------|----------------------------------------------------------------------------------|
+| Item_Identifier | Unique product ID|
+| Item_Weight | Weight of product |
+| Item_Fat_Content | Whether the product is low fat or not|
+| Item_Visibility | % of total display area in store allocated to this product |
+| Item_Type | Category to which product belongs|
+| Item_MRP | Maximum Retail Price (list price) of product|
+| MRP_Level |Category of MRP like Low, Meduim, High, Vey_High|
+| Outlet_Identifier | Unique store ID |
+| Total_Year_Establishment | Number of years stired is establushed till 2013|
+| Outlet_Size | Size of the store|
+| Outlet_Location_Type | Type of city in which store is located|
+| Outlet_Type | Grocery store or some sort of supermarket|
+| Item_Outlet_Sales| Sales of product in particular store. This is the target variabe which is to be predicted.|
+
+
+There are 8523 oobervation with 13 features. 
+Obervations:
+* There are 1559 unique items and 10 different type of outlets
+*	According to density plot of Item_MRP, it shows there are 4 types of distribution of data which involves, Low, medium, high and very high.
+*	Number of low fat products are larger than regular products.
+*	Most of the outlet has high and medium MRP level products.
+*	Most popular products are Baking goods, snacks foods, Households, Fruits and vegetables and Frozen fruits in the outlets.
+*	Most of the outlets are of medium size.
+*	Most of the outlet locations are Tier 3.
+*	OUT035, OUT045, OUT046, OUT027, OUT017 OUT018, OUT013 are mostly available.
+
+
+### What is/are the main feature(s) of interest in your dataset?
+
+The main features in the datasets are Item_MRP level, Item_Weight, Item_Fat_Content and Item_Outlet_Sales upto this point of analysis.\
+I would like to determine which features and their combinations are best to determine the Item sales in the outlet.\
+I hope to discover more significant features and their combinations by bivariate and multivariate analysis.
+
+### What other features in the dataset do you think will help support your \
+### investigation into your feature(s) of interest?
+The levels of categorical variables are likely to contribute in the sales of product in outlet and Total establishement year of the outlet could also play a role in sales. It is assumed that older the store its more likely there is more sales of products in that store.
+
+### Did you create any new variables from existing variables in the dataset?
+
+The following variables are created:\
+**MRP_Level**: The desity plot of Item_MRP showed four different distributions of MRP, So I have created 4 levels, Low, Medium, High and Very_High prize of the product.\
+**Total_Year_Establishment**: The establishment year of outlet is subtracted from 2013.
+
+### Of the features you investigated, were there any unusual distributions? \
+### Did you perform any operations on the data to tidy, adjust, or change the form \
+### of the data? If so, why did you do this?
+
+526 out of 8523 entries of item_Visibility of the product is zero which make no sense in the outlet.\
+There is still a sales of the product which have zero visibility. May be there is mistake in data entry so, I imputed all values which have zero entries.
+
+# Bivariate Plots Section
+
+> **Bivariate plots based on Oultet type**
+
+```{r echo=FALSE,  message=FALSE, warning=FALSE}
+# Item sales box plot
+ggplot(Bigmarts, aes(Outlet_Type, Item_Outlet_Sales, fill = Total_Year_Establishment)) +
+  geom_boxplot() +
+  theme(axis.text.x = element_text(angle = 70, vjust = 0.5, color = "black")) + 
+  xlab("Outlet Type") + 
+  ylab("Item_Outlet sales") + 
+  ggtitle("Item sales vs Oulet Type")
+#ggsave("Outlettype_Sales_year.png")
+```
+
+From the above distribution of each outlet type Supermarket Type3 has highest sales on total year of 28.\
+Based on the color schema of Supermarket Type1 has good sales on total 9 and 14 year of establishment.\
+Grocery store has lower sales of product.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Bigmarts, aes(Outlet_Location_Type, Item_Outlet_Sales, fill = Total_Year_Establishment)) +
+  geom_boxplot() +
+  scale_y_continuous(limits = c(0, 5000), breaks = c(0, 1000, 2000, 3000, 4000, 5000))+
+  theme(axis.text.x = element_text(angle = 70, vjust = 0.5, color = "black")) + 
+  xlab("Outlet Location") + 
+  ylab("Item_Outlet sales") + 
+  ggtitle("Outlet Location vs Item sales")
+#ggsave("Oultlet_Location_Sales.png")
+```
+
+It is clear that most of the sales are from Tier 3 type of outlet location.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Bigmarts, aes(Outlet_Size, Item_Outlet_Sales, fill = Total_Year_Establishment)) +
+  geom_boxplot() +
+  scale_y_continuous(limits = c(0, 5000), breaks = c(0, 1000, 2000, 3000, 4000, 5000))+
+  theme(axis.text.x = element_text(angle = 70, vjust = 0.5, color = "black")) + 
+  xlab("Outlet size") + 
+  ylab("Item_Outlet_Sales") + 
+  ggtitle("Outlet Size vs Item_Outlet sales")
+#ggsave("Oultlet_Location_Sales.png")
+```
+
+Meduim size outlet sales are higher as shown in above distribution graph.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Bigmarts, aes(Outlet_Identifier, Item_Outlet_Sales, fill =Total_Year_Establishment)) +
+  geom_boxplot() +
+  scale_y_continuous(limits = c(0, 5000), breaks = c(0, 1000, 2000, 3000, 4000, 5000))+
+  theme(axis.text.x = element_text(angle = 70, vjust = 0.5, color = "black")) + 
+  xlab("Item Type") + 
+  ylab("Item sales") + 
+  ggtitle("Item sales vs Item_Outlet sales")
+#ggsave("Item_type_sales.png")
+```
+
+
+It is clear that outlet27 has much higher sales as comapred to other outlets.
+
+> **Bivariate plots based on Product type**
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Bigmarts, aes(Item_Type, Item_Outlet_Sales, fill = Outlet_Size)) +
+  geom_boxplot() +
+  scale_y_continuous(limits = c(0, 5000), breaks = c(0, 1000, 2000, 3000, 4000, 5000))+
+  theme(axis.text.x = element_text(angle = 70, vjust = 0.5, color = "black")) + 
+  xlab("Item Type") + 
+  ylab("Item_Outlet sales") + 
+  ggtitle("Item Type vs Item_Outlet sales")
+#ggsave("Item_type_sales.png")
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Bigmarts, aes(Item_Fat_Content, Item_Outlet_Sales, fill = Outlet_Size)) +
+  geom_boxplot() +
+  scale_y_continuous(limits = c(0, 5000), breaks = c(0, 1000, 2000, 3000, 4000, 5000))+
+  theme(axis.text.x = element_text(angle = 70, vjust = 0.5, color = "black")) + 
+  xlab("Item Fat Content") + 
+  ylab("Item_Outlet sales") + 
+  ggtitle("Item Fat Content vs Item_Outlet sales")
+#ggsave("Item_Fat_sales.png")
+```
+
+
+The sales of the item type low_fat and regular are almost same for medium outlet size.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Bigmarts, aes(MRP_Level, Item_Outlet_Sales, fill = Outlet_Size)) +
+  geom_boxplot() +
+  scale_y_continuous(limits = c(0, 5000), breaks = c(0, 1000, 2000, 3000, 4000, 5000))+
+  theme(axis.text.x = element_text(angle = 70, vjust = 0.5, color = "black")) + 
+  xlab("Item MRP_Level") + 
+  ylab("Item_Outlet sales") + 
+  ggtitle("Item sales vs Item_Outlet sales")
+#ggsave("Item_MRPLevel_sales.png")
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(RColorBrewer)
+cuberoot_trans = function() trans_new('cuberoot', transform = function(x) x^(1/3),
+                                      inverse = function(x) x^3)
+Square_root = function() trans_new('squareroot', transform = function(x) x^(1/2),
+                                      inverse = function(x) x^2)
+ ggplot(Bigmarts, aes(Item_MRP, Item_Outlet_Sales)) +
+  geom_point() +
+  xlab("Item MRP") + 
+  ylab("Item Outlet Sales") + 
+  ggtitle("Item_MRP vs Item_Outlet_Sales")
+```
+
+The above graph celarly depict their is linear relatioship between Item MRP and Outlet sales.\
+Let see more insight by including color schema and other dimenaions with more transformations.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Bigmarts, aes(Item_MRP, Item_Outlet_Sales,color=MRP_Level)) +
+  geom_point(alpha = 0.5, size = 1,position = 'jitter') +
+   scale_color_brewer(type = 'div',palette=2)+
+  scale_y_continuous(trans= log10_trans(), limits = c(100, 10000), breaks = c(100,500, 2500, 1000, 5000, 10000))+
+    scale_x_continuous(trans = log10_trans(),limits = c(30, 300), breaks = c(30,50,100, 200, 300))+
+  xlab("Item MRP") + 
+  ylab("Item Outlet Sales") +
+  ggtitle("Item_MRP(log10) vs Item_Outlet_Sales(log10) and MRP_Level")
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Bigmarts, aes(Item_MRP, Item_Outlet_Sales, color=MRP_Level)) +
+  geom_point(alpha = 0.5, size = 1, position = 'jitter') +
+  scale_color_brewer(type = 'div',palette=2)+
+  scale_y_continuous(trans= log10_trans(),limits = c(100, 10000), breaks = c(100,500, 2500, 1000, 5000, 10000))+
+    scale_x_continuous(trans = cuberoot_trans(),limits = c(30, 300), breaks = c(30,50,100, 200, 300))+
+  xlab("Item MRP") + 
+  ylab("Item Outlet Sales") +
+  ggtitle("Item_MRP(log10) vs Cube root of Item_Outlet_Sales and MRP_Level")
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+#grid.arrange(plot1, plot2, plot3, ncol =3)
+  ggplot(Bigmarts, aes(Item_MRP, Item_Outlet_Sales, color=MRP_Level)) +
+  geom_point(alpha = 0.5, size = 1, position = 'jitter') +
+  scale_color_brewer(type = 'div',palette=2)+
+  scale_y_continuous(trans= log10_trans(),limits = c(100, 10000), breaks = c(100,500, 2500, 1000, 5000, 10000))+
+    scale_x_continuous(trans = cuberoot_trans(),limits = c(30, 300), breaks = c(30,50,100, 200, 300))+
+  xlab("Item MRP") + 
+  ylab("Item Outlet Sales") +
+  ggtitle("Item_MRP(log10) vs Cube root of Item_Outlet_Sales and MRP_Level")
+```
+
+```{r, message=FALSE, warning=FALSE}
+ggplot(Bigmarts, aes(Item_MRP, Item_Outlet_Sales, color=Item_Type)) +
+  geom_point(alpha = 0.5, size = 1, position = 'jitter') +
+  scale_color_brewer(type = 'div',palette=2)+
+  scale_y_continuous(trans= log10_trans(),limits = c(100, 10000), breaks = c(100,500, 2500, 1000, 5000, 10000))+
+    scale_x_continuous(trans = cuberoot_trans(),limits = c(30, 300), breaks = c(30,50,100, 200, 300))+
+  xlab("Item MRP") + 
+  ylab("Item Outlet Sales") +
+  ggtitle("Item_MRP(log10) vs Cube root of Item_Outlet_Sales and Item_Type")
+
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Bigmarts, aes(Item_MRP, Item_Outlet_Sales, color=Item_Fat_Content)) +
+  geom_point(alpha = 0.5, size = 1, position = 'jitter') +
+  scale_color_brewer(type = 'div',palette=2)+
+  scale_y_continuous(trans= log10_trans(),limits = c(100, 10000), breaks = c(100,500, 2500, 1000, 5000, 10000))+
+    scale_x_continuous(trans = cuberoot_trans(),limits = c(30, 300), breaks = c(30,50,100, 200, 300))+
+  xlab("Item MRP") + 
+  ylab("Item Outlet Sales") +
+  ggtitle("Item_MRP(log10) vs Cube root of Item_Outlet_Sales andItem_Fat_Content")
+
+```
+
+```{r}
+ggplot(Bigmarts, aes(Item_MRP, Item_Outlet_Sales, color=Outlet_Type)) +
+  geom_point(alpha = 0.5, size = 1, position = 'jitter') +
+  scale_color_brewer(type = 'div',palette=2)+
+  scale_y_continuous(trans= log10_trans(),limits = c(100, 10000), breaks = c(100,500, 2500, 1000, 5000, 10000))+
+    scale_x_continuous(trans = cuberoot_trans(),limits = c(30, 300), breaks = c(30,50,100, 200, 300))+
+  xlab("Item MRP") + 
+  ylab("Item Outlet Sales") +
+  ggtitle("Item_MRP(log10) vs Cube root of Item_Outlet_Sales and Outlet_Type")
+
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Bigmarts, aes(Item_MRP, Item_Outlet_Sales, color=Outlet_Size)) +
+  geom_point(alpha = 0.5, size = 1, position = 'jitter') +
+  scale_color_brewer(type = 'div',palette=2)+
+  scale_y_continuous(trans= log10_trans(),limits = c(100, 10000), breaks = c(100,500, 2500, 1000, 5000, 10000))+
+    scale_x_continuous(trans = cuberoot_trans(),limits = c(30, 300), breaks = c(30,50,100, 200, 300))+
+  xlab("Item MRP") + 
+  ylab("Item Outlet Sales") +
+  ggtitle("Item_MRP(log10) vs Cube root of Item_Outlet_Sales and Outlet_Size")
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Bigmarts, aes(Item_MRP, Item_Outlet_Sales, color= Outlet_Identifier)) +
+  geom_point(alpha = 0.5, size = 1, position = 'jitter') +
+  scale_color_brewer(type = 'div',palette=2)+
+  scale_y_continuous(trans= log10_trans(),limits = c(100, 10000), breaks = c(100,500, 2500, 1000, 5000, 10000))+
+    scale_x_continuous(trans = cuberoot_trans(),limits = c(30, 300), breaks = c(30,50,100, 200, 300))+
+  xlab("Item MRP") + 
+  ylab("Item Outlet Sales") +
+  ggtitle("Item_MRP(log10) vs Cube root of Item_Outlet_Sales and Outlet_Identifier")
+```
+
+I looked at the categorical variables again the Item_Outlet_Sales and Item_MRP.\
+Applying a log transform to Item_Outlet_Sales and cube-root transform to Item_MRP produces a more linear trend.
+There is almost linear relationship appears between Item_MRP and Item_Outlet_Sales after certain transformation.\
+Item_MRP(log10) vs Item_Outlet_Sales(log10) and MRP_Level graph shows almost perfect linear relation between between two.
+By adding color schema we see it almost apparent that MRP_level high and Very_high of product have high sales values.\
+But it is also need to understand that high correlation does not necessarily mean that there is an underlying\
+fundamental relationship between the two varibles, however can offer some insight for further investigation.
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+ ggplot(Bigmarts, aes(Item_Weight, Item_Outlet_Sales, color = Item_Type)) +
+  geom_point() +
+  xlab("Item Weight") + 
+  ylab("Item Outlet Sales") + 
+  ggtitle("Item_Weight vs Item_Outlet_Sales")
+```
+
+There is no such apparent relation exhibits between Item_Weight and sales from the above graph.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ ggplot(Bigmarts, aes(Item_Weight, Item_Outlet_Sales,color = Item_Type)) +
+  geom_point(alpha = 0.5, size = 1,position = 'jitter') +
+   scale_color_brewer(type = 'div',palette=2)+
+  scale_y_continuous(trans= log10_trans(),limits = c(100, 10000), breaks = c(100,500, 2500, 1000, 5000, 10000))+
+    scale_x_continuous()+
+  xlab("Item Weight") + 
+  ylab("Item Outlet Sales") +
+  ggtitle("Item_Weight(log10) vs Item_Outlet_Sales(log10)")
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ ggplot(Bigmarts, aes(Item_Weight, Item_Outlet_Sales,color = Item_Type)) +
+  geom_point(alpha = 0.5, size = 1, position = 'jitter') +
+  scale_color_brewer(type = 'div',palette=2)+
+  scale_y_continuous(trans = cuberoot_trans(),limits = c(100, 10000), breaks = c(100,500, 2500, 1000, 5000, 10000))+
+    scale_x_continuous(trans = log10_trans(),limits = c(5, 20), breaks = c(5,10, 20))+
+  xlab("Item Weight") + 
+  ylab("Item Outlet Sales") +
+  ggtitle("Item_Weight(log10) vs Cube root of Item_Outlet_Sales")
+#grid.arrange(plot1, plot2, plot3, ncol =3)
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+ ggplot(Bigmarts, aes(Item_Visibility, Item_Outlet_Sales, color = Outlet_Type)) +
+  geom_point(alpha = 0.5, size = 1,position = 'jitter') +
+   scale_color_brewer(type = 'div',palette=2)+
+  scale_y_continuous(trans= log10_trans(),limits = c(100, 10000), breaks = c(100,500, 2500, 1000, 5000, 10000))+
+   scale_x_continuous()+
+  xlab("Item Visibility") + 
+  ylab("Item Outlet Sales") +
+  ggtitle("Item_Visibility vs Item_Outlet_Sales(log10) and Item_Type")
+
+
+```
+
+Item visible more than less than 0.2 are high in sales. Lets take more peep\
+by breaking into store types.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ ggplot(Bigmarts, aes(Item_Visibility, Item_Outlet_Sales, color = Outlet_Type)) +
+  geom_point(alpha = 0.5, size = 1,position = 'jitter') +
+   scale_color_brewer(type = 'div',palette=2)+
+  scale_y_continuous(trans= log10_trans(),limits = c(100, 10000), breaks = c(100,500, 2500, 1000, 5000, 10000))+
+   scale_x_continuous()+
+  xlab("Item Visibility") + 
+  ylab("Item Outlet Sales") +
+  facet_wrap(~Outlet_Type)+
+  ggtitle("Item_Visibility vs Item_Outlet_Sales(log10) and Item_Type")
+ 
+```
+
+In Suepr market 1, 2 ,3 items visible leass than 0.2 are more sales as comapred to \
+grocery store.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Bigmarts, aes(x = Item_Visibility, y = Item_Outlet_Sales, color = Outlet_Location_Type  ) ) +
+geom_point(stat = 'Identity',position = 'jitter') +
+facet_wrap(~Outlet_Location_Type+Outlet_Size) +
+xlab('Item visibility') +
+ylab('Outlet Sales') +
+ggtitle('Item Visibility vs Outlet Sales')
+#grid.arrange(plot1, plot2, plot3, ncol =3)
+```
+
+
+We see that there is difference between grocery store and super market which is shown in above scatter plot.\
+Super market has higher sales.it seemed from the above shown graph that Item_Vsisibity and Item_Outlet_Sales are slightly negatively correlated.\
+To make it more clear I added color scheme to know which are those item.\
+Its clear that Baking Soda, Breads, Breakfast items, Dairy products occupy less sace but still they have more sales.
+it also shoes that items with visibility less than 0.2 has high sales.
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+ ggplot(Bigmarts, aes(Total_Year_Establishment, Item_Outlet_Sales))+
+  geom_point() +
+  xlab("Total Year Eastablishement") + 
+  ylab("Item Outlet Sales") + 
+  ggtitle("Item_Visibility vs Item_Outlet_Sales")
+
+ ggplot(Bigmarts, aes(Total_Year_Establishment, Item_Outlet_Sales)) +
+  geom_point(alpha = 0.5, size = 1,position = 'jitter') +
+   scale_color_brewer(type = 'div',palette=2)+
+  scale_y_continuous(trans= log10_trans(),c(100, 10000), breaks = c(100,500, 2500, 1000, 5000, 10000))+
+  xlab("Total Year Eastablishement")+ 
+  ylab("Item Outlet Sales")+
+  ggtitle("Total Year Establishement vs Item_Outlet_Sales(log10) and Item_Type")
+ 
+  ggplot(Bigmarts, aes(Total_Year_Establishment, Item_Outlet_Sales)) +
+  geom_point(alpha = 0.5, size = 1, position = 'jitter') +
+  scale_color_brewer(type = 'div',palette=2)+
+  scale_y_continuous(trans = cuberoot_trans(),c(100, 10000), breaks = c(100,500, 2500, 1000, 5000, 10000))+
+  xlab("Total Year Eastablishement") + 
+  ylab("Item Outlet Sales") +
+  ggtitle("Total Year Eastablishement vs Cube root of Item_Outlet_Sales")
+
+
+#grid.arrange(plot1, plot2, plot3, ncol =3)
+
+
+```
+
+There is no such apparent relationship stands out between Total_Year_Establishment and\
+Item_Outlet_Sales from the verticle strips in  graph but looks like there is kind of nolinear type relationship exists.\
+But it can be said from above graph that which may be true that oultet which are old have higher sales.
+
+# Bivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. How did the feature(s) of interest vary with other features in \
+the dataset?
+
+Item_MRP is strongly correlates with the Item_Outlet_Sales. MRP level Very_high is also positively correlated with Item_Outlet_Sales.\
+Outlet identifier is also positively correlated with sales.
+
+There is no such apparenet relationship exhibited between Total_Year_Establishment and Item_Outlet_Sales.
+
+Item_Vsisibity and Item_Outlet_Sales are slightly negatively correlated. \
+To make it more clear I added color scheme to know which are those item. \
+Its clear that Baking Soda, Breads, Breakfast items, Dairy products occupy less sace but still they have more sales.
+That nake sense about some of the items which take less space to storage in outlet does not refer does not mean they have less sales. 
+Its unfair to rely on the visibility percentange on the sales.\
+But It was more seen items visibility less than 0.2 hs higher in sales.
+
+
+### Did you observe any interesting relationships between the other features \
+(not the main feature(s) of interest)?
+
+### What was the strongest relationship you found?
+
+The Item_Outlet_Sales are strongly correated with Item_MRP. There are certain stores which are positively correlated with Outlets.\
+This could be achieved by dummyfying categorcal variables.
+
+# Multivariate Plots Section
+
+> **Tip**: Now it's time to put everything together. Based on what you found in
+the bivariate plots section, create a few multivariate plots to investigate
+more complex interactions between variables. Make sure that the plots that you
+create here are justified by the plots you explored in the previous section. If
+you plan on creating any mathematical models, this is the section where you
+will do that.
+
+```{r echo=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+#cor.prob will create a correlation matrix along with p-values
+cor.prob <- function (X, dfr = nrow(X) - 2) {
+        R <- cor(X, use="pairwise.complete.obs")
+        above <- row(R) < col(R)
+        r2 <- R[above]^2
+        Fstat <- r2 * dfr/(1 - r2)
+        R[above] <- 1 - pf(Fstat, 1, dfr)
+        R[row(R) == col(R)] <- NA
+        R
+}
+#flattenSquareMatrix will flatten all the combinations from the square matrix into a data frame of 4 columns made up of row names, column names, the correlation value and the p-value
+flattenSquareMatrix <- function(m) {
+        if( (class(m) != "matrix") | (nrow(m) != ncol(m))) stop("Must be a square matrix.")
+        if(!identical(rownames(m), colnames(m))) stop("Row and column names must be equal.")
+        ut <- upper.tri(m)
+        data.frame(i = rownames(m)[row(m)[ut]],
+                   j = rownames(m)[col(m)[ut]],
+                   cor=t(m)[ut],
+                   p=m[ut])
+}
+# dummyfy all factor variables using caret package.
+dmy <- dummyVars("~ .", data = Bigmarts)
+BigmartsTrsf <- data.frame((predict(dmy, newdata = Bigmarts)))
+dim(BigmartsTrsf)
+corMasterList <- flattenSquareMatrix (cor.prob(BigmartsTrsf))
+print(head(corMasterList,5))
+corList <- corMasterList[order(-abs(corMasterList$cor)),]
+print(head(corList,10))
+
+selectedSub <- subset(corList, (abs(cor) > 0.2 & j == 'Item_Outlet_Sales'))
+# save the most correlated features to the bestSub variable
+bestSub <- as.character(selectedSub$i)
+
+# plot the highly correlated pairs using the {psych} package’s pair.panels
+pairs.panels(BigmartsTrsf[c(bestSub, 'Item_Outlet_Sales')]) 
+#title("Scatter plot and correlation")
+```
+
+Above the scatter plot shows the correlation between the highly correlated pairs. 
+The diagonal cells show the kernel density plot of each variables.The pairs plot, 
+and in particular the last Item_Outlet_Sales column, tell us a lot about our data set. 
+Upon examining, it is observed that there is strong correlation exist between Item_MRP and Item_Outlet_Sales. 
+MRP level Very_high is also positively correlated with Item_Outlet_Sales. Outlet identyifier is also positively correlated with sales.
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(Bigmarts, aes(Item_Visibility, Item_Weight, color =Item_Type)) +
+  geom_point(alpha = 0.5, size = 1, position = 'jitter') +
+  scale_color_brewer(type = 'div',palette=2)+
+  scale_y_continuous(trans = log10_trans())+
+  scale_x_continuous(trans = cuberoot_trans())+
+  ggtitle("Item_Visibility vs Item_Weight and Item_Type")
+
+
+
+```
+
+Item_Visibility and Item_Weight does not also appear to be correlated.
+
+# Multivariate Analysis
+
+See the importance of variables in followings which contribute to the sales.\
+I have used dummyVars Function  to translate all factor variables into numerical variables(also used for modeling purpose). After dummyVars Function 1618 combinations of feattures are generated out of which 10 most important featres are shown.
+
+```{r, echo=TRUE, message=FALSE, warning=FALSE}
+# Dimesion of newly created features.
+dim(BigmartsTrsf)
+# top 10 best features
+selectedSub
+
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Bigmarts, aes(Item_Visibility, Item_MRP)) + geom_point(aes(color = Item_Type)) + 
+  scale_x_continuous("Item Visibility", breaks = seq(0,0.35,0.05))+
+  scale_y_continuous("Item MRP", breaks = seq(0,270,by = 30))+
+  theme_bw() + labs(title="Scatterplot of Item_MRP and Item_Visibility")
+```
+
+
+Lets us make it more apparent visulization using facet wrap in the following graph.
+
+```{r}
+ggplot(Bigmarts, aes(Item_Visibility, Item_MRP)) + geom_point(aes(color = Item_Type)) + 
+  scale_x_continuous("Item Visibility", breaks = seq(0,0.35,0.05))+
+  scale_y_continuous("Item MRP", breaks = seq(0,270,by = 30))+
+  theme_bw() + labs(title="Scatterplot of Item_MRP and Item_Visibility with Item Type")+ facet_wrap( ~ Item_Type)
+```
+
+This shows items visibility less than 0.2 have high in MRP which is interestig because we already\
+seen Item_MRP is positively correlated with sales and less than 0.2 visible items have high in sales.
+
+
+```{r}
+Bigmarts_corr <- subset(Bigmarts, select = c(Item_Weight,Item_Visibility,  Item_MRP, Item_Outlet_Sales))
+scatterplotMatrix(Bigmarts_corr[1:4], main = "Scatter plot of numerical variables")                                                
+                                              
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+ggcorr(Bigmarts, palette = "RdGy",label = TRUE)
+```
+
+# Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. Were there features that strengthened each other in terms of \
+looking at your feature(s) of interest?
+
+Plotting Item_MRP with different facets gave a valuable relation with Item_Outlet sales.\
+I was ale to find out the imporant features numerical and categoricals playing significant role\
+sales.
+The top most correlated features are given below.
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+bestSub
+```
+
+
+### Were there any interesting or surprising interactions between features?
+I observed that there is no such correlation appeared between Total_Year_establishment\
+and Item_Outlet_Sales even after certain transformation of varibles.\
+It is strange because but there is some older oultlets which has resonble sales.
+
+One thing also fould interesting thatitems visibility less than 0.2 have high in MRPwhich is interestig\
+because we already seen Item_MRP is positively correlated with sales and less than 0.2 visible items have high in sales.
+
+
+### OPTIONAL: Did you create any models with your dataset? Discuss the \
+strengths and limitations of your model.
+```{r, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+m1 <- lm(I(log(Item_Outlet_Sales)) ~ I(Item_MRP^(1/3)), data = Bigmarts)
+m2 <- update(m1, ~ . + Total_Year_Establishment)
+m3 <- update(m2, ~ . + MRP_Level)
+m4 <- update(m3, ~ . + Outlet_Identifier)
+m5 <- update(m4, ~ . + Outlet_Location_Type)
+mtable(m1,m2,m3,m4, m5)
+
+```
+
+
+# Final Plots and Summary
+
+> **Tip**: You've done a lot of exploration and have built up an understanding
+of the structure of and relationships between the variables in your dataset.
+Here, you will select three plots from all of your previous exploration to
+present here as a summary of some of your most interesting findings. Make sure
+that you have refined your selected plots for good titling, axis labels (with
+units), and good aesthetic choices (e.g. color, transparency). After each plot,
+make sure you justify why you chose each plot by describing what it shows.
+
+
+
+### Plot One
+```{r echo=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(Bigmarts, aes(Item_Outlet_Sales)) +
+  geom_histogram(binwidth = 200, color = "black", fill = "DarkOrange") +
+  scale_x_continuous(labels = dollar,  breaks = seq(0,10000, 500))+
+   theme(axis.text.x = element_text(angle = 90))+
+  ggtitle("Item_Outlet_Sales Count")
+
+```
+
+
+### Description One
+The distribution of item sales are in long tails which reflect the real life phenomenon.\
+The long tail distribution of sales shows the small number of items have higher sales which\
+is approximately 20% of items have 80% of sales.\
+
+
+### Plot Two
+```{r echo=FALSE, echo=FALSE, message=FALSE, warning=FALSE}
+
+ ggplot(Bigmarts, aes(Item_MRP, Item_Outlet_Sales, color=MRP_Level)) +
+  geom_point(alpha = 0.5, size = 1, position = 'jitter') +
+  scale_color_brewer(type = 'div',palette=2)+
+  scale_y_continuous(trans= log10_trans(),limits = c(100, 10000), breaks = c(100,500, 2500, 1000, 5000, 10000))+
+    scale_x_continuous(trans = cuberoot_trans(),limits = c(30, 300), breaks = c(30,50,100, 200, 300))+
+  xlab("Item MRP") + 
+  ylab("Item Outlet Sales") +
+  ggtitle("Cuberoot(log10) vs log10(Item_Outlet_Sales) and MRP_Level")
+
+
+```
+
+
+### Description Two
+The log10 transformation of sales and cuberoot of MRP graph shows the linear trend. It can be possible to build a linear predictive model.
+
+
+### Plot Three
+
+Bigmarts_corr <- subset(Bigmarts, select = c(Item_Weight,Item_Visibility,  Item_MRP, Item_Outlet_Sales))
+scatterplotMatrix(Bigmarts_corr[1:4], main = "Scatter plot of numerical variables")   
+
+
+### plot the highly correlated pairs using the {psych} package’s pair.panels
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+scatterplotMatrix(Bigmarts_corr[1:4], main = "Scatter plot of numerical variables")      
+ggcorr(Bigmarts, palette = "RdGy",label = TRUE)
+```
+
+### Description Three
+The scatter plot shows the correlation between the highly correlated pairs. \
+The diagonal cells show the kernel density plot of each variables.The pairs plot,\ 
+and in particular the last Item_Outlet_Sales column, tell us a lot about our data set. \
+Upon examining, it is observed that there is strong correlation exist between Item_MRP and Item_Outlet_Sales.\ 
+MRP level Very_high is also positively correlated with Item_Outlet_Sales. Outlet identyifier is also positively correlated with\ sales.
+Top 10 most correalated feature appear to be shown below.\
+This could be also possible to find the correlation betweeen categorical variables.
+
+
+The Bigmarts data is information obout 1559 Item and 10 outles and their sales for year 2013.\
+It has 8523 observations about 12 variables.The data set is divided into two type of variables: \ 
+  **Categorical variables**: 
+  Item_Identifier, Item_Fat_Content,Item_Type,Outlet_Identifier,Outlet_Size,Outlet_Location_Type,Outlet_Type  
+  **Numerical variables**: 
+  Item_Weight, Item_Visibility, Item_MRP , Outlet_Establishment_Year, Item_Outlet_Sales 
+  I started by understanding the individual variables in the data set and plots their graph to find the interesting pattern or trends.\
+  The categorcal variables hade many interesting information in the data set.
+I explored the Item_Outlet_sales across many variabes and found out the interesting relations between them. It was clear that there is a positive correlation between Item_MRP and Item_Outlet_Sales. \
+The one thing a bit surprising for me was that the density plot of Item_Outlet_Sales and Item_Visibility are almost same which lead to strong positive correation  but there no relation stand out between two.
+
+This seemed really intereting to combine two cateforcal variables to predict the sales(eg: Item+Outlet -> Sales)
+I have built the linear model between Item_MRP and Sales by adding some categorcal variables but I believe it be improved a lot in terms of accuracy and performaance. I am planning to build a more accurate predictive model in future when i will be versed in Machine learning with R as this was the first time I was working with R. Bit I was amazed ploting graph with R.
